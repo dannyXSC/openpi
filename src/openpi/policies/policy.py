@@ -32,6 +32,9 @@ class Policy(BasePolicy):
     ):
         self._sample_actions = nnx_utils.module_jit(model.sample_actions)
         self._input_transform = _transforms.compose(transforms)
+        # for testing
+        self.test = output_transforms
+
         self._output_transform = _transforms.compose(output_transforms)
         self._rng = rng or jax.random.key(0)
         self._sample_kwargs = sample_kwargs or {}
@@ -48,7 +51,9 @@ class Policy(BasePolicy):
         self._rng, sample_rng = jax.random.split(self._rng)
         outputs = {
             "state": inputs["state"],
-            "actions": self._sample_actions(sample_rng, _model.Observation.from_dict(inputs), **self._sample_kwargs),
+            "actions": self._sample_actions(
+                sample_rng, _model.Observation.from_dict(inputs), **self._sample_kwargs
+            ),
         }
 
         # Unbatch and convert to np.ndarray.

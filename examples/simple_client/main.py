@@ -15,6 +15,7 @@ class EnvMode(enum.Enum):
     ALOHA_SIM = "aloha_sim"
     DROID = "droid"
     LIBERO = "libero"
+    H2R = "h2r"
 
 
 @dataclasses.dataclass
@@ -22,7 +23,7 @@ class Args:
     host: str = "0.0.0.0"
     port: int = 8000
 
-    env: EnvMode = EnvMode.ALOHA_SIM
+    env: EnvMode = EnvMode.H2R
     num_steps: int = 10
 
 
@@ -32,6 +33,7 @@ def main(args: Args) -> None:
         EnvMode.ALOHA_SIM: _random_observation_aloha,
         EnvMode.DROID: _random_observation_droid,
         EnvMode.LIBERO: _random_observation_libero,
+        EnvMode.H2R: _random_observation_h2r,
     }[args.env]
 
     policy = _websocket_client_policy.WebsocketClientPolicy(
@@ -45,7 +47,8 @@ def main(args: Args) -> None:
 
     start = time.time()
     for _ in range(args.num_steps):
-        policy.infer(obs_fn())
+        result = policy.infer(obs_fn())
+        print(f"{result=}")
     end = time.time()
 
     print(f"Total time taken: {end - start:.2f} s")
@@ -58,8 +61,12 @@ def _random_observation_aloha() -> dict:
         "images": {
             "cam_high": np.random.randint(256, size=(3, 224, 224), dtype=np.uint8),
             "cam_low": np.random.randint(256, size=(3, 224, 224), dtype=np.uint8),
-            "cam_left_wrist": np.random.randint(256, size=(3, 224, 224), dtype=np.uint8),
-            "cam_right_wrist": np.random.randint(256, size=(3, 224, 224), dtype=np.uint8),
+            "cam_left_wrist": np.random.randint(
+                256, size=(3, 224, 224), dtype=np.uint8
+            ),
+            "cam_right_wrist": np.random.randint(
+                256, size=(3, 224, 224), dtype=np.uint8
+            ),
         },
         "prompt": "do something",
     }
@@ -67,8 +74,12 @@ def _random_observation_aloha() -> dict:
 
 def _random_observation_droid() -> dict:
     return {
-        "observation/exterior_image_1_left": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
-        "observation/wrist_image_left": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
+        "observation/exterior_image_1_left": np.random.randint(
+            256, size=(224, 224, 3), dtype=np.uint8
+        ),
+        "observation/wrist_image_left": np.random.randint(
+            256, size=(224, 224, 3), dtype=np.uint8
+        ),
         "observation/joint_position": np.random.rand(7),
         "observation/gripper_position": np.random.rand(1),
         "prompt": "do something",
@@ -79,7 +90,22 @@ def _random_observation_libero() -> dict:
     return {
         "observation/state": np.random.rand(8),
         "observation/image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
-        "observation/wrist_image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
+        "observation/wrist_image": np.random.randint(
+            256, size=(224, 224, 3), dtype=np.uint8
+        ),
+        "prompt": "do something",
+    }
+
+
+def _random_observation_h2r() -> dict:
+    return {
+        "observation/robot_image": np.random.randint(
+            256, size=(224, 224, 3), dtype=np.uint8
+        ),
+        # "observation/human_image": np.random.randint(
+        #     256, size=(224, 224, 3), dtype=np.uint8
+        # ),
+        "observation/state": np.random.rand(7),
         "prompt": "do something",
     }
 

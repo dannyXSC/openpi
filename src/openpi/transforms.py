@@ -7,10 +7,12 @@ import flax.traverse_util as traverse_util
 import jax
 import numpy as np
 from openpi_client import image_tools
-
 from openpi.models import tokenizer as _tokenizer
 from openpi.shared import array_typing as at
 from openpi.shared import normalize as _normalize
+
+from scipy.spatial.transform import Rotation as R
+from abc import ABC, abstractmethod
 
 DataDict: TypeAlias = at.PyTree
 NormStats: TypeAlias = _normalize.NormStats
@@ -46,7 +48,12 @@ class Group:
     # Transforms that are applied to the model output data.
     outputs: Sequence[DataTransformFn] = ()
 
-    def push(self, *, inputs: Sequence[DataTransformFn] = (), outputs: Sequence[DataTransformFn] = ()) -> "Group":
+    def push(
+        self,
+        *,
+        inputs: Sequence[DataTransformFn] = (),
+        outputs: Sequence[DataTransformFn] = (),
+    ) -> "Group":
         """Append transforms to the group and return a new group.
 
         Args:
@@ -180,7 +187,10 @@ class ResizeImages(DataTransformFn):
     width: int
 
     def __call__(self, data: DataDict) -> DataDict:
-        data["image"] = {k: image_tools.resize_with_pad(v, self.height, self.width) for k, v in data["image"].items()}
+        data["image"] = {
+            k: image_tools.resize_with_pad(v, self.height, self.width)
+            for k, v in data["image"].items()
+        }
         return data
 
 
@@ -209,7 +219,9 @@ class DeltaActions(DataTransformFn):
         state, actions = data["state"], data["actions"]
         mask = np.asarray(self.mask)
         dims = mask.shape[-1]
-        actions[..., :dims] -= np.expand_dims(np.where(mask, state[..., :dims], 0), axis=-2)
+        actions[..., :dims] -= np.expand_dims(
+            np.where(mask, state[..., :dims], 0), axis=-2
+        )
         data["actions"] = actions
 
         return data
@@ -231,7 +243,9 @@ class AbsoluteActions(DataTransformFn):
         state, actions = data["state"], data["actions"]
         mask = np.asarray(self.mask)
         dims = mask.shape[-1]
-        actions[..., :dims] += np.expand_dims(np.where(mask, state[..., :dims], 0), axis=-2)
+        actions[..., :dims] += np.expand_dims(
+            np.where(mask, state[..., :dims], 0), axis=-2
+        )
         data["actions"] = actions
 
         return data
@@ -249,7 +263,11 @@ class TokenizePrompt(DataTransformFn):
             prompt = prompt.item()
 
         tokens, token_masks = self.tokenizer.tokenize(prompt)
-        return {**data, "tokenized_prompt": tokens, "tokenized_prompt_mask": token_masks}
+        return {
+            **data,
+            "tokenized_prompt": tokens,
+            "tokenized_prompt_mask": token_masks,
+        }
 
 
 @dataclasses.dataclass(frozen=True)
@@ -264,7 +282,9 @@ class TokenizeFASTInputs(DataTransformFn):
             prompt = prompt.item()
 
         state, actions = data["state"], data.get("actions")
-        tokens, token_mask, ar_mask, loss_mask = self.tokenizer.tokenize(prompt, state, actions)
+        tokens, token_mask, ar_mask, loss_mask = self.tokenizer.tokenize(
+            prompt, state, actions
+        )
         return {
             **data,
             "tokenized_prompt": tokens,
@@ -283,9 +303,12 @@ class ExtractFASTActions(DataTransformFn):
     def __call__(self, data: DataDict) -> DataDict:
         if "actions" not in data:
             return data
+
         # Model outputs are saved in "actions", but for FAST models they represent tokens.
         tokens = data.pop("actions")
-        actions = self.tokenizer.extract_actions(tokens.astype(np.int32), self.action_horizon, self.action_dim)
+        actions = self.tokenizer.extract_actions(
+            tokens.astype(np.int32), self.action_horizon, self.action_dim
+        )
         return {
             **data,
             "actions": actions,
@@ -375,7 +398,11 @@ def transform_dict(patterns: Mapping[str, str | None], tree: at.PyTree) -> at.Py
 
 
 def apply_tree(
-    tree: at.PyTree[T], selector: at.PyTree[S], fn: Callable[[T, S], T], *, strict: bool = False
+    tree: at.PyTree[T],
+    selector: at.PyTree[S],
+    fn: Callable[[T, S], T],
+    *,
+    strict: bool = False,
 ) -> at.PyTree[T]:
     tree = flatten_dict(tree)
     selector = flatten_dict(selector)
@@ -431,3 +458,66 @@ def _assert_quantile_stats(norm_stats: at.PyTree[NormStats]) -> None:
             raise ValueError(
                 f"quantile stats must be provided if use_quantile_norm is True. Key {k} is missing q01 or q99."
             )
+
+
+class RotationEmbed(ABC):
+    def __init__(self):
+        super().__init__()
+
+    def __normalize(self, vector, axis=0):
+        return vector / np.linalg.norm(vector, axis=axis, keepdims=True)
+
+    def angles_to_embed(self, angles):
+        has_batch = True
+        if len(angles.shape) == 1:
+            angles = angles[np.newaxis, :]
+            has_batch = False
+        # angles 是一个 batch 输入，形状为 (batch_size, n)
+        # 计算旋转矩阵
+        matrix = self._angles_to_matrix(angles)
+        # 对所有样本提取前两列并展平
+        result = matrix[..., :2].reshape(matrix.shape[0], -1)
+        if not has_batch:
+            result = result[0]
+        return result
+
+    def embed_to_angles(self, embed):
+        has_batch = True
+        if len(embed.shape) == 1:
+            embed = embed[np.newaxis, :]
+            has_batch = False
+        # embed 是一个 batch 输入，形状为 (batch_size, 6)
+        embed = embed.reshape(-1, 3, 2)
+        a1 = embed[..., 0]  # 第一列 (b, 3)
+        a2 = embed[..., 1]  # 第二列 (b, 3)
+        b1 = self.__normalize(a1, axis=1)
+        b2 = self.__normalize(a2 - np.sum(b1 * a2, axis=1, keepdims=True) * b1, axis=1)
+        b3 = np.cross(b1, b2)
+        matrix = np.stack((b1, b2, b3), axis=-1)
+        result = self._matrix_to_angles(matrix)
+        if not has_batch:
+            result = result[0]
+        return result
+
+    @abstractmethod
+    def _angles_to_matrix(self, angles):
+        pass
+
+    @abstractmethod
+    def _matrix_to_angles(self, matrix):
+        pass
+
+
+class EulerRotationEmbed(RotationEmbed):
+    def __init__(self, seq="xyz", degrees=True):
+        super().__init__()
+        self.seq = seq
+        self.degrees = degrees
+
+    def _angles_to_matrix(self, angles):
+        # angles 形状应为 (batch_size, 3)，表示每个样本的三个角度
+        return R.from_euler(self.seq, angles, degrees=self.degrees).as_matrix()
+
+    def _matrix_to_angles(self, matrix):
+        # matrix 形状应为 (batch_size, 3, 3)
+        return R.from_matrix(matrix).as_euler(self.seq, degrees=self.degrees)

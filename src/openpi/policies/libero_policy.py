@@ -12,7 +12,9 @@ def make_libero_example() -> dict:
     return {
         "observation/state": np.random.rand(8),
         "observation/image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
-        "observation/wrist_image": np.random.randint(256, size=(224, 224, 3), dtype=np.uint8),
+        "observation/wrist_image": np.random.randint(
+            256, size=(224, 224, 3), dtype=np.uint8
+        ),
         "prompt": "do something",
     }
 
@@ -35,7 +37,9 @@ class LiberoInputs(transforms.DataTransformFn):
     model_type: _model.ModelType = _model.ModelType.PI0
 
     def __call__(self, data: dict) -> dict:
-        mask_padding = self.model_type == _model.ModelType.PI0  # We don't mask for pi0-FAST.
+        mask_padding = (
+            self.model_type == _model.ModelType.PI0
+        )  # We don't mask for pi0-FAST.
 
         # Get the state. We are padding from 8 to the model action dim.
         # For pi0-FAST, we don't pad the state (action_dim = 7, which is < 8, so pad is skipped).
