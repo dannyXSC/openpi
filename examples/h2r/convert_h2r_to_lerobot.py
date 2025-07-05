@@ -29,13 +29,26 @@ import tensorflow_datasets as tfds
 import tyro
 
 REPO_NAME = "dannyXSC/h2r_video_test"  # Name of the output dataset, also used for the Hugging Face Hub
-BASE_PATH = "/data1/dataset"
 RAW_DATASET_DISCRIPTION = {
     "grab_cube2_v1": "grab the green cube into the plate",
+    "grab_cup_v1": "grab the cup and change its position",
+    "grab_pencil1_v1": "grab the pen into the plate",
+    "grab_pencil2_v1": "grab the pen into the plate",
+    "grab_to_plate1_and_back_v1": "grab the red cube into the green plate",
+    "grab_to_plate1_v1": "grab the red cube into the green plate",
+    "grab_to_plate2_and_back_v1": "grab the red cube into the yellow plate",
+    "grab_to_plate2_v1": "grab the red cube into the yellow plate",
+    "grab_to_plate2_and_pull_v1": "grab the red cube into the green plate and pull the plate",
+    "grab_two_cubes2_v1": "grab the green cube into the plate",
+    "pull_plate_v1": "pull the plate",
+    "push_box_common_v1": "push the box",
+    "push_box_random_v1": "push the box",
+    "push_box_two_v1": "push the box",
+    "push_plate_v1": "push the plate",
 }
 
 
-def main(*, push_to_hub: bool = False):
+def main(data_dir: str, *, push_to_hub: bool = False):
     # Clean up any existing dataset in the output directory
     output_path = LEROBOT_HOME / REPO_NAME
     if output_path.exists():
@@ -78,9 +91,10 @@ def main(*, push_to_hub: bool = False):
     # You can modify this for your own data format
     for raw_dataset_name, discription in RAW_DATASET_DISCRIPTION.items():
         # hdf5 reader
-        dataset_path = os.path.join(BASE_PATH, raw_dataset_name)
+        dataset_path = os.path.join(data_dir, raw_dataset_name)
         # find the file under the dataset path ended with .hdf5
         files = [f for f in os.listdir(dataset_path) if f.endswith(".hdf5")]
+        print(dataset_path)
         for episode in files:
             with h5py.File(os.path.join(dataset_path, episode), "r") as f:
                 human_video = np.uint8(f["/cam_data/human_camera"])

@@ -48,7 +48,7 @@ def main(args: Args) -> None:
     start = time.time()
     for _ in range(args.num_steps):
         result = policy.infer(obs_fn())
-        print(f"{result=}")
+        # print(f"{result=}")
     end = time.time()
 
     print(f"Total time taken: {end - start:.2f} s")

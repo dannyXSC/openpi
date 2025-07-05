@@ -21,6 +21,7 @@ import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
 import openpi.policies.h2r_policy as h2r_policy
+import openpi.policies.robosuite_policy as robosuite_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
 import openpi.training.optimizer as _optimizer
@@ -358,10 +359,62 @@ class LeRobotH2rDataConfig(DataConfigFactory):
                     model_type=model_config.model_type,
                 )
             ],
-            outputs=[libero_policy.LiberoOutputs()],
+            outputs=[h2r_policy.H2rOutputs()],
         )
         # Use delta actions (not for gripper and rotation)
         delta_action_mask = _transforms.make_bool_mask(3, -7)
+        # delta_action_mask = _transforms.make_bool_mask(9, -1)
+        data_transforms = data_transforms.push(
+            inputs=[_transforms.DeltaActions(delta_action_mask)],
+            outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+        )
+
+        # Model transforms include things like tokenizing the prompt and action targets
+        model_transforms = ModelTransformFactory()(model_config)
+
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs),
+            repack_transforms=repack_transform,
+            data_transforms=data_transforms,
+            model_transforms=model_transforms,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class RobosuiteDataConfig(DataConfigFactory):
+    @override
+    def create(
+        self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig
+    ) -> DataConfig:
+        # Make inputs look like they come from the Libero environment
+        repack_transform = _transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "observation/agentview_image": "agentview_image",
+                        "observation/robot0_eye_in_hand_image": "robot0_eye_in_hand_image",
+                        "observation/state": "state",
+                        "actions": "actions",
+                        "prompt": "prompt",
+                    }
+                )
+            ]
+        )
+
+        # Prepare data for policy training
+        # Convert images to uint8 numpy arrays, add masks
+        data_transforms = _transforms.Group(
+            inputs=[
+                robosuite_policy.RobosuiteInputs(
+                    action_dim=model_config.action_dim,
+                    model_type=model_config.model_type,
+                )
+            ],
+            outputs=[robosuite_policy.RobosuiteOutputs()],
+        )
+        # Use delta actions (not for gripper and rotation)
+        delta_action_mask = _transforms.make_bool_mask(-7)
+        # delta_action_mask = _transforms.make_bool_mask(9, -1)
         data_transforms = data_transforms.push(
             inputs=[_transforms.DeltaActions(delta_action_mask)],
             outputs=[_transforms.AbsoluteActions(delta_action_mask)],
@@ -620,6 +673,168 @@ _CONFIGS = [
     #############################################################################
     # my config start                                                           #
     #############################################################################
+    TrainConfig(
+        name="pi0_robosuite_finetune_mug",
+        model=pi0.Pi0Config(
+            # action_dim=10,
+            # action_horizon=10,
+            # max_token_len=180,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ),
+        data=RobosuiteDataConfig(
+            repo_id="mug_cleanup",
+            base_config=DataConfig(
+                local_files_only=True,  # Set to True for local-only datasets.
+                prompt_from_task=True,
+            ),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        num_train_steps=30_000,
+        freeze_filter=pi0.Pi0Config(
+            # action_dim=10,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+    ),
+    TrainConfig(
+        name="pi0_robosuite_finetune_hammer",
+        model=pi0.Pi0Config(
+            # action_dim=10,
+            # action_horizon=10,
+            # max_token_len=180,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ),
+        data=RobosuiteDataConfig(
+            repo_id="hammer_cleanup",
+            base_config=DataConfig(
+                local_files_only=True,  # Set to True for local-only datasets.
+                prompt_from_task=True,
+            ),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        num_train_steps=30_000,
+        freeze_filter=pi0.Pi0Config(
+            # action_dim=10,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+    ),
+    TrainConfig(
+        name="pi0_robosuite_finetune_kitchen",
+        model=pi0.Pi0Config(
+            # action_dim=10,
+            # action_horizon=10,
+            # max_token_len=180,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ),
+        data=RobosuiteDataConfig(
+            repo_id="kitchen",
+            base_config=DataConfig(
+                local_files_only=True,  # Set to True for local-only datasets.
+                prompt_from_task=True,
+            ),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        num_train_steps=30_000,
+        freeze_filter=pi0.Pi0Config(
+            # action_dim=10,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+    ),
+    TrainConfig(
+        name="pi0_robosuite_finetune_square",
+        model=pi0.Pi0Config(
+            # action_dim=10,
+            # action_horizon=10,
+            # max_token_len=180,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ),
+        data=RobosuiteDataConfig(
+            repo_id="square",
+            base_config=DataConfig(
+                local_files_only=True,  # Set to True for local-only datasets.
+                prompt_from_task=True,
+            ),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        num_train_steps=30_000,
+        freeze_filter=pi0.Pi0Config(
+            # action_dim=10,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+    ),
+    TrainConfig(
+        name="pi0_robosuite_finetune_threading",
+        model=pi0.Pi0Config(
+            # action_dim=10,
+            # action_horizon=10,
+            # max_token_len=180,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ),
+        data=RobosuiteDataConfig(
+            repo_id="threading",
+            base_config=DataConfig(
+                local_files_only=True,  # Set to True for local-only datasets.
+                prompt_from_task=True,
+            ),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        num_train_steps=30_000,
+        freeze_filter=pi0.Pi0Config(
+            # action_dim=10,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+    ),
+    TrainConfig(
+        name="pi0_h2r_multitask_low_mem_finetune_my",
+        model=pi0.Pi0Config(
+            # action_dim=10,
+            # action_horizon=10,
+            # max_token_len=180,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ),
+        data=LeRobotH2rDataConfig(
+            repo_id="dannyXSC/h2r_video_test",
+            base_config=DataConfig(
+                local_files_only=True,  # Set to True for local-only datasets.
+                prompt_from_task=True,
+            ),
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "s3://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        num_train_steps=30_000,
+        freeze_filter=pi0.Pi0Config(
+            # action_dim=10,
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+    ),
     TrainConfig(
         name="pi0_h2r_low_mem_finetune_my",
         model=pi0.Pi0Config(
