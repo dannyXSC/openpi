@@ -84,10 +84,12 @@ def main(data_dir: str, task_name: str, task_description: str, *,root: str = Non
             robot0_gripper_qpos = demo["obs/robot0_gripper_qpos"][:]
             state = np.concatenate([robot0_eef_pos, robot0_eef_quat, robot0_gripper_qpos], axis=-1)
             
+            mask = demo["foreground_info"]["mask"][:]
+            
             for j in range(len(actions)):
                 dataset.add_frame(
                     {
-                        "agentview_image": agentview_image[j],
+                        "agentview_image": agentview_image[j] * mask[j],
                         "robot0_eye_in_hand_image": robot0_eye_in_hand_image[j],
                         "state": state[j],
                         "actions": actions[j],  
